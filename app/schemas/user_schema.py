@@ -15,6 +15,13 @@ class UserLogin(BaseModel):
 class ResendVerification(BaseModel):
     email: EmailStr = Field(..., description="Email address to resend verification")
 
+class ForgotPassword(BaseModel):
+    email: EmailStr = Field(..., description="Email address to send password reset link")
+
+class ResetPassword(BaseModel):
+    token: str = Field(..., description="Password reset token from email")
+    new_password: str = Field(..., min_length=6, description="New password must be at least 6 characters long")
+
 class UserResponse(BaseModel):
     """Schema for user response."""
     id: uuid.UUID

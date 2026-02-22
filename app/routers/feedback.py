@@ -6,7 +6,7 @@ import uuid
 
 from app.database import get_db
 from app.models.model import User, Message
-from app.schemas.message_schema import MessageCreate, MessageAcceptanceToggle, MessageResponse
+from app.schemas.message_schema import MessageCreate, MessageResponse
 from app.utils.auth import get_current_verified_user
 from app.schemas.user_schema import UserResponse
 
@@ -125,14 +125,21 @@ async def delete_message(
         "success": True
     }
 
-@router.patch("/toggle-messages", response_model=UserResponse)
+@router.post("/toggle-messages", response_model=UserResponse)
 async def toggle_message_acceptance(
-    toggle_data: MessageAcceptanceToggle,
     current_user: Annotated[User, Depends(get_current_verified_user)],
     db: Session = Depends(get_db)
 ):
-    current_user.is_accepting_messages = toggle_data.is_accepting_messages
+    """
+    Toggle message acceptance status.
+    If currently accepting messages, will stop accepting.
+    If currently not accepting, will start accepting.
+    """
+    # Flip the boolean value
+    current_user.is_accepting_messages = not current_user.is_accepting_messages
     db.commit()
     db.refresh(current_user)
+    
+    logger.info(f"User {current_user.username} toggled message acceptance to {current_user.is_accepting_messages}")
     
     return current_user
