@@ -15,6 +15,10 @@ class UserLogin(BaseModel):
 class ResendVerification(BaseModel):
     email: EmailStr = Field(..., description="Email address to resend verification")
 
+class VerifyOTP(BaseModel):
+    email: EmailStr = Field(..., description="Email address to verify")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r'^\d{6}$', description="6-digit OTP code")
+
 class ForgotPassword(BaseModel):
     email: EmailStr = Field(..., description="Email address to send password reset link")
 

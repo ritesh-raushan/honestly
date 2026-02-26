@@ -1,7 +1,19 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
+import random
+import string
 from app.config import settings
+
+# OTP Functions
+def generate_otp(length: int = 6) -> str:
+    return ''.join(random.choices(string.digits, k=length))
+
+def is_otp_expired(otp_created_at: datetime) -> bool:
+    if not otp_created_at:
+        return True
+    expiry_time = otp_created_at + timedelta(hours=settings.verification_token_expire_hours)
+    return datetime.now(timezone.utc) > expiry_time
 
 def create_verification_token(email: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=settings.verification_token_expire_hours)

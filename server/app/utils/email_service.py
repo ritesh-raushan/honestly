@@ -18,27 +18,25 @@ class EmailService:
         )
         self.fast_mail = FastMail(self.conf)
 
-    async def send_verification_email(self, email: EmailStr, username: str, verification_token: str):
-        verification_link = f"{settings.backend_url}/auth/verify-email?token={verification_token}"
-
+    async def send_verification_email(self, email: EmailStr, username: str, otp: str):
         html_content = f"""
         <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
                 <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
                     <h2 style="color: #4F46E5;">Welcome to Anonymous Feedback!</h2>
                     <p>Hi {username},</p>
-                    <p>Thank you for registering with Anonymous Feedback. Please verify your email address to activate your account.</p>
-                    <p style="margin: 30px 0;">
-                        <a href="{verification_link}" 
-                            style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                            Verify Email Address
-                        </a>
-                    </p>
-                    <p>Or copy and paste this link in your browser:</p>
-                    <p style="word-break: break-all; color: #666;">{verification_link}</p>
+                    <p>Thank you for registering with Anonymous Feedback. Please use the OTP below to verify your email address.</p>
+                    <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
+                        <p style="margin: 0; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px;">Your Verification Code</p>
+                        <p style="margin: 10px 0 0 0; font-size: 36px; font-weight: bold; color: #4F46E5; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+                            {otp}
+                        </p>
+                    </div>
+                    <p style="text-align: center; color: #666;">Enter this code on the verification page to activate your account.</p>
                     <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
-                        This link will expire in {settings.verification_token_expire_hours} hours.<br>
-                        If you didn't create an account, please ignore this email.
+                        This code will expire in {settings.verification_token_expire_hours} hours.<br>
+                        If you didn't create an account, please ignore this email.<br>
+                        <strong>Do not share this code with anyone.</strong>
                     </p>
                 </div>
             </body>
