@@ -8,13 +8,8 @@ from datetime import datetime, timezone
 from app.database import get_db
 from app.models.model import User
 
-from app.schemas.user_schema import UserCreate, ResendVerification, ForgotPassword, ResetPassword, VerifyOTP
-from app.utils.tokens import (
-    generate_otp,
-    is_otp_expired,
-    create_password_reset_token,
-    verify_password_reset_token
-)
+from app.schemas.user_schema import UserCreate, ResendVerification, ForgotPassword, ResetPassword, VerifyOTP, VerifyResetOTP
+from app.utils.tokens import generate_otp, is_otp_expired
 from app.utils.email_service import email_service
 
 # Configure logging
@@ -228,24 +223,29 @@ async def forgot_password(request_data: ForgotPassword, db: Session = Depends(ge
     
     if not user:
         logger.warning(f"Password reset requested for non-existent email: {request_data.email}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Email address is not registered"
-        )
+        # Don't reveal if email exists or not for security
+        return {
+            "message": "If the email exists, a password reset code has been sent.",
+            "success": True
+        }
     
-    # Generate password reset token
-    reset_token = create_password_reset_token(user.email)    
-    # Store token in database (overwrites any previous token)
-    user.password_reset_token = reset_token
-    db.commit()    
-    # Send password reset email
+    # Generate password reset OTP
+    reset_otp = generate_otp()
+    
+    # Store OTP in database and reset attempts
+    user.password_reset_otp = reset_otp
+    user.reset_otp_created_at = datetime.now(timezone.utc)
+    user.reset_otp_attempts = 0
+    db.commit()
+    
+    # Send password reset email with OTP
     try:
         await email_service.send_password_reset_email(
             email=user.email,
             username=user.username,
-            reset_token=reset_token
+            otp=reset_otp
         )
-        logger.info(f"Password reset email sent to {user.email}")
+        logger.info(f"Password reset OTP sent to {user.email}")
     except Exception as e:
         logger.error(f"Error sending password reset email to {user.email}: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -254,23 +254,15 @@ async def forgot_password(request_data: ForgotPassword, db: Session = Depends(ge
         )
     
     return {
-        "message": "Password reset link has been sent to your email address.",
+        "message": "Password reset code has been sent to your email address.",
         "success": True
     }
 
-@router.post("/reset-password", status_code=status.HTTP_200_OK, response_model=dict)
-async def reset_password(request_data: ResetPassword, db: Session = Depends(get_db)):
-    # Verify reset token
-    email = verify_password_reset_token(request_data.token)
-    
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired password reset token"
-        )
-    
+@router.post("/verify-reset-otp", status_code=status.HTTP_200_OK, response_model=dict)
+async def verify_reset_otp(request_data: VerifyResetOTP, db: Session = Depends(get_db)):
+    """Step 1 of password reset: Verify the OTP code"""
     # Find user by email
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == request_data.email).first()
     
     if not user:
         raise HTTPException(
@@ -278,17 +270,92 @@ async def reset_password(request_data: ResetPassword, db: Session = Depends(get_
             detail="User not found"
         )
     
-    # Validate token matches the one stored in database
-    if user.password_reset_token != request_data.token:
+    # Check if OTP exists
+    if not user.password_reset_otp:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired password reset token"
+            detail="No password reset code found. Please request a new one."
+        )
+    
+    # Check if OTP is expired
+    if is_otp_expired(user.reset_otp_created_at):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset code has expired. Please request a new one."
+        )
+    
+    # Check OTP attempts (max 5 attempts)
+    if user.reset_otp_attempts >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please request a new password reset code."
+        )
+    
+    # Verify OTP
+    if user.password_reset_otp != request_data.otp:
+        # Increment failed attempts
+        user.reset_otp_attempts += 1
+        db.commit()
+        
+        remaining_attempts = 5 - user.reset_otp_attempts
+        if remaining_attempts > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid reset code. {remaining_attempts} attempt(s) remaining."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed attempts. Please request a new password reset code."
+            )
+    
+    # OTP is valid - user can proceed to reset password
+    logger.info(f"Password reset OTP verified for user {user.email}")
+    
+    return {
+        "message": "Reset code verified successfully. You can now reset your password.",
+        "success": True
+    }
+
+@router.post("/reset-password", status_code=status.HTTP_200_OK, response_model=dict)
+async def reset_password(request_data: ResetPassword, db: Session = Depends(get_db)):
+    """Step 2 of password reset: Reset the password after OTP verification"""
+    # Find user by email
+    user = db.query(User).filter(User.email == request_data.email).first()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check if OTP exists (user must verify OTP first)
+    if not user.password_reset_otp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Please verify your reset code first."
+        )
+    
+    # Check if OTP is expired
+    if is_otp_expired(user.reset_otp_created_at):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset session has expired. Please request a new code."
+        )
+    
+    # Check if OTP was verified (attempts should be valid)
+    if user.reset_otp_attempts >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed attempts. Please request a new password reset code."
         )
     
     # Hash new password and update
     user.password = pwd_context.hash(request_data.new_password)
-    # Clear the password reset token
-    user.password_reset_token = None
+    # Clear the password reset OTP fields
+    user.password_reset_otp = None
+    user.reset_otp_created_at = None
+    user.reset_otp_attempts = 0
     db.commit()
     
     logger.info(f"Password reset successful for user {user.username}")

@@ -20,10 +20,14 @@ class VerifyOTP(BaseModel):
     otp: str = Field(..., min_length=6, max_length=6, pattern=r'^\d{6}$', description="6-digit OTP code")
 
 class ForgotPassword(BaseModel):
-    email: EmailStr = Field(..., description="Email address to send password reset link")
+    email: EmailStr = Field(..., description="Email address to send password reset code")
+
+class VerifyResetOTP(BaseModel):
+    email: EmailStr = Field(..., description="Email address")
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r'^\d{6}$', description="6-digit OTP code")
 
 class ResetPassword(BaseModel):
-    token: str = Field(..., description="Password reset token from email")
+    email: EmailStr = Field(..., description="Email address")
     new_password: str = Field(..., min_length=6, description="New password must be at least 6 characters long")
 
 class UserResponse(BaseModel):

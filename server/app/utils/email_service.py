@@ -95,9 +95,7 @@ class EmailService:
         
         await self.fast_mail.send_message(message)
 
-    async def send_password_reset_email(self, email: EmailStr, username: str, reset_token: str):
-        reset_link = f"{settings.frontend_url}/reset-password?token={reset_token}"
-        
+    async def send_password_reset_email(self, email: EmailStr, username: str, otp: str):
         html_content = f"""
         <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -105,17 +103,18 @@ class EmailService:
                     <h2 style="color: #4F46E5;">Password Reset Request</h2>
                     <p>Hi {username},</p>
                     <p>We received a request to reset your password for your Anonymous Feedback account.</p>
-                    <p style="margin: 30px 0;">
-                        <a href="{reset_link}" 
-                            style="background-color: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
-                            Reset Password
-                        </a>
-                    </p>
-                    <p>Or copy and paste this link in your browser:</p>
-                    <p style="word-break: break-all; color: #666;">{reset_link}</p>
+                    <p>Please use the OTP below to reset your password:</p>
+                    <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; text-align: center; margin: 30px 0;">
+                        <p style="margin: 0; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px;">Your Reset Code</p>
+                        <p style="margin: 10px 0 0 0; font-size: 36px; font-weight: bold; color: #4F46E5; letter-spacing: 8px; font-family: 'Courier New', monospace;">
+                            {otp}
+                        </p>
+                    </div>
+                    <p style="text-align: center; color: #666;">Enter this code on the password reset page.</p>
                     <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
-                        This link will expire in {settings.password_reset_token_expire_hours} hour(s).<br>
-                        If you didn't request a password reset, please ignore this email or contact support if you have concerns.
+                        This code will expire in {settings.password_reset_token_expire_hours} hour(s).<br>
+                        If you didn't request a password reset, please ignore this email or contact support if you have concerns.<br>
+                        <strong>Do not share this code with anyone.</strong>
                     </p>
                 </div>
             </body>
