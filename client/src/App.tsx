@@ -1,13 +1,10 @@
-
-
 function App() {
-
   return (
-    <>
-      <h1 className="text-3xl font-bold underline">
-      Hello world!
+    <div style={{ width: '100%', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <h1 className="hero-title" style={{ fontSize: '4rem' }}>
+        <span className="ticket-wrapper">Honestly.</span>
       </h1>
-    </>
+    </div>
   )
 }
 
