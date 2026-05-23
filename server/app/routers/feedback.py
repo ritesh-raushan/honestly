@@ -9,12 +9,36 @@ from app.models.model import User, Message
 from app.rate_limit import limiter
 from app.schemas.message_schema import MessageCreate, MessageResponse, MessagesPage
 from app.utils.auth import get_current_verified_user
-from app.schemas.user_schema import UserResponse
+from app.schemas.user_schema import UserResponse, UserStatusResponse
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Feedback"])
+
+@router.get("/u/{username}/status", response_model=UserStatusResponse)
+@limiter.limit("30/minute")
+async def get_user_status(request: Request, username: str, db: Session = Depends(get_db)):
+    """
+    Public status of a user, used by the anonymous feedback page.
+    Returns exists=False for missing or unverified users so the public surface
+    can render a clean "not found" state without distinguishing the two cases.
+    Rate-limited to discourage cheap username enumeration.
+    """
+    user = db.query(User).filter(User.username == username.lower()).first()
+    
+    if not user or not user.is_verified:
+        return UserStatusResponse(
+            username=username,
+            exists=False,
+            is_accepting_messages=False
+        )
+    
+    return UserStatusResponse(
+        username=user.username,
+        exists=True,
+        is_accepting_messages=user.is_accepting_messages
+    )
 
 @router.post("/u/{username}", status_code=status.HTTP_201_CREATED, response_model=dict)
 @limiter.limit("10/minute;30/hour")

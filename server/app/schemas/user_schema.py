@@ -51,3 +51,9 @@ class LoginResponse(BaseModel):
     refresh_token: str
     token_type: str
     user: UserResponse
+
+class UserStatusResponse(BaseModel):
+    """Public status of a user, used by the anonymous feedback page to decide whether to show the form."""
+    username: str
+    exists: bool
+    is_accepting_messages: bool
