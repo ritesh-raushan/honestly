@@ -1,23 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request, Response
 from sqlalchemy.orm import Session
 from typing import Annotated
-from passlib.context import CryptContext
 import logging
 from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.model import User
 from app.config import settings
+from app.rate_limit import limiter
 
 from app.schemas.user_schema import UserCreate, ResendVerification, ForgotPassword, ResetPassword, VerifyOTP, VerifyResetOTP, ChangePassword
 from app.utils.auth import get_current_verified_user
+from app.utils.password import hash_password, verify_password
 from app.utils.tokens import generate_otp, is_otp_expired
 from app.utils.email_service import email_service
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(
     prefix="/auth",
@@ -57,7 +56,8 @@ async def check_email_availability(email: str = Query(..., description="Email to
     }
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=dict)
-async def signup(user: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def signup(request: Request, user: UserCreate, db: Session = Depends(get_db)):
     username = user.username.lower()
     email = user.email.lower()
 
@@ -73,7 +73,7 @@ async def signup(user: UserCreate, db: Session = Depends(get_db)):
     new_user = User(
         username=username,
         email=email,
-        password = pwd_context.hash(user.password),
+        password = hash_password(user.password),
         verification_otp = otp,
         otp_created_at = datetime.now(timezone.utc),
         otp_attempts = 0,
@@ -174,7 +174,8 @@ async def verify_email(request_data: VerifyOTP, db: Session = Depends(get_db)):
     }
 
 @router.post("/resend-verification", status_code=status.HTTP_200_OK, response_model=dict)
-async def resend_verification_email(request_data: ResendVerification, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+async def resend_verification_email(request: Request, request_data: ResendVerification, db: Session = Depends(get_db)):
     # Find user by email
     user = db.query(User).filter(User.email == request_data.email.lower()).first()
     
@@ -210,7 +211,8 @@ async def resend_verification_email(request_data: ResendVerification, db: Sessio
     return generic_response
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK, response_model=dict)
-async def forgot_password(request_data: ForgotPassword, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, request_data: ForgotPassword, db: Session = Depends(get_db)):
     generic_response = {
         "message": "If the email exists, a password reset code has been sent.",
         "success": True
@@ -337,7 +339,7 @@ async def reset_password(request_data: ResetPassword, db: Session = Depends(get_
         )
     
     # Hash new password and update
-    user.password = pwd_context.hash(request_data.new_password)
+    user.password = hash_password(request_data.new_password)
     # Clear the password reset OTP fields
     user.password_reset_otp = None
     user.reset_otp_created_at = None
@@ -363,21 +365,21 @@ async def change_password(
     Requires the current password as a confirmation step.
     """
     # Verify current password before allowing any change
-    if not pwd_context.verify(request_data.current_password, current_user.password):
+    if not verify_password(request_data.current_password, current_user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect"
         )
     
     # Reject if the new password is the same as the current one
-    if pwd_context.verify(request_data.new_password, current_user.password):
+    if verify_password(request_data.new_password, current_user.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="New password must be different from the current password"
         )
     
     # Hash and save the new password
-    current_user.password = pwd_context.hash(request_data.new_password)
+    current_user.password = hash_password(request_data.new_password)
     db.commit()
     
     logger.info(f"Password changed for user {current_user.username}")

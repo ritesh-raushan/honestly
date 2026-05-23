@@ -8,7 +8,9 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: ${DATABASE_NAME}
     ports:
-      - "5432:5432"
+      # Host port 5433 -> container 5432 to avoid clashing with a native
+      # Postgres installation that already binds host 5432.
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

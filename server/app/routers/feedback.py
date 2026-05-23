@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from typing import Annotated
 import logging
@@ -6,6 +6,7 @@ import uuid
 
 from app.database import get_db
 from app.models.model import User, Message
+from app.rate_limit import limiter
 from app.schemas.message_schema import MessageCreate, MessageResponse, MessagesPage
 from app.utils.auth import get_current_verified_user
 from app.schemas.user_schema import UserResponse
@@ -16,7 +17,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Feedback"])
 
 @router.post("/u/{username}", status_code=status.HTTP_201_CREATED, response_model=dict)
-async def submit_feedback(username: str, message_data: MessageCreate, db: Session = Depends(get_db)):
+@limiter.limit("10/minute;30/hour")
+async def submit_feedback(request: Request, username: str, message_data: MessageCreate, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username.lower()).first()
     
     if not user:

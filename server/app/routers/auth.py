@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 from typing import Annotated
 import logging
 
 from app.database import get_db
 from app.models.model import User
 from app.config import settings
+from app.rate_limit import limiter
 
 from app.schemas.user_schema import UserLogin, UserResponse, LoginResponse
 from app.utils.auth import get_current_verified_user
+from app.utils.password import verify_password
 from app.utils.tokens import (
     create_access_token,
     create_refresh_token,
@@ -18,8 +19,6 @@ from app.utils.tokens import (
 
 # Configure logging
 logger = logging.getLogger(__name__)
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(
     prefix="/auth",
@@ -31,7 +30,8 @@ _COOKIE_SECURE = settings.environment != "development"
 _REFRESH_COOKIE_MAX_AGE = settings.refresh_token_expire_days * 24 * 60 * 60
 
 @router.post("/login", response_model=LoginResponse)
-async def login(user_credentials: UserLogin, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, user_credentials: UserLogin, response: Response, db: Session = Depends(get_db)):
     identifier = user_credentials.identifier.lower()
 
     # Find user by email or username
@@ -47,7 +47,7 @@ async def login(user_credentials: UserLogin, response: Response, db: Session = D
         )
     
     # Verify password
-    if not pwd_context.verify(user_credentials.password, user.password):
+    if not verify_password(user_credentials.password, user.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials",
