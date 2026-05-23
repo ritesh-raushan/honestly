@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Annotated, List
+from typing import Annotated
 import logging
 import uuid
 
 from app.database import get_db
 from app.models.model import User, Message
-from app.schemas.message_schema import MessageCreate, MessageResponse
+from app.schemas.message_schema import MessageCreate, MessageResponse, MessagesPage
 from app.utils.auth import get_current_verified_user
 from app.schemas.user_schema import UserResponse
 
@@ -71,22 +71,33 @@ async def get_messages_count(
     
     return {"count": count}
 
-@router.get("/messages", response_model=List[MessageResponse])
+@router.get("/messages", response_model=MessagesPage)
 async def get_my_messages(
     current_user: Annotated[User, Depends(get_current_verified_user)],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100, description="Max number of messages to return"),
+    offset: int = Query(0, ge=0, description="Number of messages to skip")
 ):
     """
-    Get all messages received by the authenticated user.
+    Get messages received by the authenticated user, paginated.
     Messages are sorted by created_at in descending order (newest first).
     """
-    messages = db.query(Message).filter(
-        Message.recipient_id == current_user.id
-    ).order_by(Message.created_at.desc()).all()
+    base_query = db.query(Message).filter(Message.recipient_id == current_user.id)
     
-    logger.info(f"User {current_user.username} retrieved {len(messages)} messages")
+    # Fetch total before applying limit/offset so the client can render pagination
+    total = base_query.count()
     
-    return messages
+    items = (
+        base_query
+        .order_by(Message.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    
+    logger.info(f"User {current_user.username} retrieved {len(items)} of {total} messages (offset={offset})")
+    
+    return MessagesPage(items=items, total=total, limit=limit, offset=offset)
 
 @router.delete("/messages/{message_id}", status_code=status.HTTP_200_OK, response_model=dict)
 async def delete_message(

@@ -30,6 +30,10 @@ class ResetPassword(BaseModel):
     email: EmailStr = Field(..., description="Email address")
     new_password: str = Field(..., min_length=8, description="New password must be at least 8 characters long")
 
+class ChangePassword(BaseModel):
+    current_password: str = Field(..., min_length=1, description="Current password")
+    new_password: str = Field(..., min_length=8, description="New password must be at least 8 characters long")
+
 class UserResponse(BaseModel):
     """Schema for user response."""
     id: uuid.UUID

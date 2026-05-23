@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
+from typing import Annotated
 import logging
 
 from app.database import get_db
 from app.models.model import User
+from app.config import settings
 
 from app.schemas.user_schema import UserLogin, UserResponse, LoginResponse
+from app.utils.auth import get_current_verified_user
 from app.utils.tokens import (
     create_access_token,
     create_refresh_token,
@@ -22,6 +25,10 @@ router = APIRouter(
     prefix="/auth",
     tags=["Authentication"]
 )
+
+# Cookie settings derived from the environment so refresh tokens work over plain http on localhost while still requiring https in production.
+_COOKIE_SECURE = settings.environment != "development"
+_REFRESH_COOKIE_MAX_AGE = settings.refresh_token_expire_days * 24 * 60 * 60
 
 @router.post("/login", response_model=LoginResponse)
 async def login(user_credentials: UserLogin, response: Response, db: Session = Depends(get_db)):
@@ -62,9 +69,9 @@ async def login(user_credentials: UserLogin, response: Response, db: Session = D
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=True,
+        secure=_COOKIE_SECURE,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60  # 7 days
+        max_age=_REFRESH_COOKIE_MAX_AGE
     )
     
     return LoginResponse(
@@ -134,9 +141,9 @@ async def refresh_token(request: Request, response: Response, db: Session = Depe
         key="refresh_token",
         value=new_refresh_token,
         httponly=True,
-        secure=True,
+        secure=_COOKIE_SECURE,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60  # 7 days
+        max_age=_REFRESH_COOKIE_MAX_AGE
     )
     
     logger.info(f"Token refreshed for user {user.username}")
@@ -156,7 +163,7 @@ async def logout(response: Response):
     response.delete_cookie(
         key="refresh_token",
         httponly=True,
-        secure=True,
+        secure=_COOKIE_SECURE,
         samesite="lax"
     )
     
@@ -166,3 +173,11 @@ async def logout(response: Response):
         "message": "Logged out successfully",
         "success": True
     }
+
+@router.get("/me", response_model=UserResponse)
+async def get_me(current_user: Annotated[User, Depends(get_current_verified_user)]):
+    """
+    Return the currently authenticated user.
+    The frontend calls this on app boot to hydrate the user session.
+    """
+    return current_user

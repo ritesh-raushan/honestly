@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 import uuid
 
 class MessageCreate(BaseModel):
@@ -13,6 +13,13 @@ class MessageResponse(BaseModel):
     created_at: datetime
     
     model_config = ConfigDict(from_attributes=True)
+
+class MessagesPage(BaseModel):
+    """Paginated wrapper around a list of messages."""
+    items: List[MessageResponse]
+    total: int
+    limit: int
+    offset: int
 
 class MessageAcceptanceToggle(BaseModel):
     is_accepting_messages: bool = Field(..., description="Whether to accept anonymous messages")

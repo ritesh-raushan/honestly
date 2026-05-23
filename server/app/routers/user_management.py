@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.orm import Session
 from typing import Annotated
 from passlib.context import CryptContext
@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.model import User
+from app.config import settings
 
-from app.schemas.user_schema import UserCreate, ResendVerification, ForgotPassword, ResetPassword, VerifyOTP, VerifyResetOTP
+from app.schemas.user_schema import UserCreate, ResendVerification, ForgotPassword, ResetPassword, VerifyOTP, VerifyResetOTP, ChangePassword
+from app.utils.auth import get_current_verified_user
 from app.utils.tokens import generate_otp, is_otp_expired
 from app.utils.email_service import email_service
 
@@ -347,5 +349,70 @@ async def reset_password(request_data: ResetPassword, db: Session = Depends(get_
     
     return {
         "message": "Password has been reset successfully. You can now login with your new password.",
+        "success": True
+    }
+
+@router.post("/change-password", status_code=status.HTTP_200_OK, response_model=dict)
+async def change_password(
+    request_data: ChangePassword,
+    current_user: Annotated[User, Depends(get_current_verified_user)],
+    db: Session = Depends(get_db)
+):
+    """
+    Change the password for an already authenticated user.
+    Requires the current password as a confirmation step.
+    """
+    # Verify current password before allowing any change
+    if not pwd_context.verify(request_data.current_password, current_user.password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Current password is incorrect"
+        )
+    
+    # Reject if the new password is the same as the current one
+    if pwd_context.verify(request_data.new_password, current_user.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from the current password"
+        )
+    
+    # Hash and save the new password
+    current_user.password = pwd_context.hash(request_data.new_password)
+    db.commit()
+    
+    logger.info(f"Password changed for user {current_user.username}")
+    
+    return {
+        "message": "Password changed successfully",
+        "success": True
+    }
+
+@router.delete("/me", status_code=status.HTTP_200_OK, response_model=dict)
+async def delete_account(
+    response: Response,
+    current_user: Annotated[User, Depends(get_current_verified_user)],
+    db: Session = Depends(get_db)
+):
+    """
+    Permanently delete the authenticated user and all their messages (via cascade).
+    Also clears the refresh token cookie so the client is fully logged out.
+    """
+    username = current_user.username
+    
+    db.delete(current_user)
+    db.commit()
+    
+    # Clear the refresh token cookie so the now-orphaned client is logged out
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=settings.environment != "development",
+        samesite="lax"
+    )
+    
+    logger.info(f"User {username} deleted their account")
+    
+    return {
+        "message": "Account deleted successfully",
         "success": True
     }
