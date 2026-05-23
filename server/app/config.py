@@ -1,6 +1,10 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    # Environment
+    environment: str = "development"
+
+    # Database Settings
     database_hostname: str
     database_port: int
     database_password: str
@@ -18,7 +22,7 @@ class Settings(BaseSettings):
     
     # Email Settings
     resend_api_key: str
-    mail_from: str
+    mail_from_address: str
     mail_from_name: str
     
     # URL Settings

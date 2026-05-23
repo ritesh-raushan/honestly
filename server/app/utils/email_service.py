@@ -7,7 +7,7 @@ class EmailService:
         self.conf = ConnectionConfig(
             MAIL_USERNAME="resend",
             MAIL_PASSWORD=settings.resend_api_key,
-            MAIL_FROM=f"noreply@{settings.mail_from}",
+            MAIL_FROM=settings.mail_from_address,
             MAIL_PORT=587,
             MAIL_SERVER="smtp.resend.com",
             MAIL_FROM_NAME=settings.mail_from_name,
