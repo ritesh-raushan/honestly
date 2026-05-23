@@ -56,8 +56,11 @@ async def check_email_availability(email: str = Query(..., description="Email to
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def signup(user: UserCreate, db: Session = Depends(get_db)):
+    username = user.username.lower()
+    email = user.email.lower()
+
     # Check if username or email already exixts
-    existing_user = db.query(User).filter((User.username == user.username) | (User.email == user.email)).first()
+    existing_user = db.query(User).filter((User.username == username) | (User.email == email)).first()
     if existing_user:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already exists")
     
@@ -66,8 +69,8 @@ async def signup(user: UserCreate, db: Session = Depends(get_db)):
 
     # Create new user
     new_user = User(
-        username=user.username,
-        email=user.email,
+        username=username,
+        email=email,
         password = pwd_context.hash(user.password),
         verification_otp = otp,
         otp_created_at = datetime.now(timezone.utc),
@@ -100,7 +103,7 @@ async def signup(user: UserCreate, db: Session = Depends(get_db)):
 @router.post("/verify-email", status_code=status.HTTP_200_OK, response_model=dict)
 async def verify_email(request_data: VerifyOTP, db: Session = Depends(get_db)):
     # Find user by email
-    user = db.query(User).filter(User.email == request_data.email).first()
+    user = db.query(User).filter(User.email == request_data.email.lower()).first()
     
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -171,21 +174,16 @@ async def verify_email(request_data: VerifyOTP, db: Session = Depends(get_db)):
 @router.post("/resend-verification", status_code=status.HTTP_200_OK, response_model=dict)
 async def resend_verification_email(request_data: ResendVerification, db: Session = Depends(get_db)):
     # Find user by email
-    user = db.query(User).filter(User.email == request_data.email).first()
+    user = db.query(User).filter(User.email == request_data.email.lower()).first()
     
-    if not user:
-        # Don't reveal if email exists or not for security
-        return {
-            "message": "If the email exists, a verification code has been sent.",
-            "success": True
-        }
+    # Generic response used both when the user doesn't exist and when they're already verified
+    generic_response = {
+        "message": "If the email exists and is unverified, a verification code has been sent.",
+        "success": True
+    }
     
-    # Check if user is already verified
-    if user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email is already verified"
-        )
+    if not user or user.is_verified:
+        return generic_response
     
     # Generate new OTP
     new_otp = generate_otp()
@@ -206,28 +204,22 @@ async def resend_verification_email(request_data: ResendVerification, db: Sessio
         logger.info(f"Verification OTP resent to {user.email}")
     except Exception as e:
         logger.error(f"Error resending verification email to {user.email}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send verification email. Please try again later."
-        )
     
-    return {
-        "message": "Verification code has been sent to your email. Please check your inbox.",
-        "success": True
-    }
+    return generic_response
 
 @router.post("/forgot-password", status_code=status.HTTP_200_OK, response_model=dict)
 async def forgot_password(request_data: ForgotPassword, db: Session = Depends(get_db)):
+    generic_response = {
+        "message": "If the email exists, a password reset code has been sent.",
+        "success": True
+    }
+
     # Find user by email
-    user = db.query(User).filter(User.email == request_data.email).first()
+    user = db.query(User).filter(User.email == request_data.email.lower()).first()
     
     if not user:
         logger.warning(f"Password reset requested for non-existent email: {request_data.email}")
-        # Don't reveal if email exists or not for security
-        return {
-            "message": "If the email exists, a password reset code has been sent.",
-            "success": True
-        }
+        return generic_response
     
     # Generate password reset OTP
     reset_otp = generate_otp()
@@ -236,6 +228,7 @@ async def forgot_password(request_data: ForgotPassword, db: Session = Depends(ge
     user.password_reset_otp = reset_otp
     user.reset_otp_created_at = datetime.now(timezone.utc)
     user.reset_otp_attempts = 0
+    user.is_reset_otp_verified = False
     db.commit()
     
     # Send password reset email with OTP
@@ -248,21 +241,14 @@ async def forgot_password(request_data: ForgotPassword, db: Session = Depends(ge
         logger.info(f"Password reset OTP sent to {user.email}")
     except Exception as e:
         logger.error(f"Error sending password reset email to {user.email}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to send password reset email. Please try again later."
-        )
     
-    return {
-        "message": "Password reset code has been sent to your email address.",
-        "success": True
-    }
+    return generic_response
 
 @router.post("/verify-reset-otp", status_code=status.HTTP_200_OK, response_model=dict)
 async def verify_reset_otp(request_data: VerifyResetOTP, db: Session = Depends(get_db)):
     """Step 1 of password reset: Verify the OTP code"""
     # Find user by email
-    user = db.query(User).filter(User.email == request_data.email).first()
+    user = db.query(User).filter(User.email == request_data.email.lower()).first()
     
     if not user:
         raise HTTPException(
@@ -310,6 +296,8 @@ async def verify_reset_otp(request_data: VerifyResetOTP, db: Session = Depends(g
             )
     
     # OTP is valid - user can proceed to reset password
+    user.is_reset_otp_verified = True
+    db.commit()
     logger.info(f"Password reset OTP verified for user {user.email}")
     
     return {
@@ -321,7 +309,7 @@ async def verify_reset_otp(request_data: VerifyResetOTP, db: Session = Depends(g
 async def reset_password(request_data: ResetPassword, db: Session = Depends(get_db)):
     """Step 2 of password reset: Reset the password after OTP verification"""
     # Find user by email
-    user = db.query(User).filter(User.email == request_data.email).first()
+    user = db.query(User).filter(User.email == request_data.email.lower()).first()
     
     if not user:
         raise HTTPException(
@@ -329,8 +317,8 @@ async def reset_password(request_data: ResetPassword, db: Session = Depends(get_
             detail="User not found"
         )
     
-    # Check if OTP exists (user must verify OTP first)
-    if not user.password_reset_otp:
+    # Require the OTP to have been verified via /verify-reset-otp first
+    if not user.is_reset_otp_verified:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Please verify your reset code first."
@@ -338,16 +326,12 @@ async def reset_password(request_data: ResetPassword, db: Session = Depends(get_
     
     # Check if OTP is expired
     if is_otp_expired(user.reset_otp_created_at):
+        # Clear the stale verified flag so it can't be revived by a new request
+        user.is_reset_otp_verified = False
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Password reset session has expired. Please request a new code."
-        )
-    
-    # Check if OTP was verified (attempts should be valid)
-    if user.reset_otp_attempts >= 5:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many failed attempts. Please request a new password reset code."
         )
     
     # Hash new password and update
@@ -356,6 +340,7 @@ async def reset_password(request_data: ResetPassword, db: Session = Depends(get_
     user.password_reset_otp = None
     user.reset_otp_created_at = None
     user.reset_otp_attempts = 0
+    user.is_reset_otp_verified = False
     db.commit()
     
     logger.info(f"Password reset successful for user {user.username}")

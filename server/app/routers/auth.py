@@ -25,9 +25,11 @@ router = APIRouter(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(user_credentials: UserLogin, response: Response, db: Session = Depends(get_db)):
+    identifier = user_credentials.identifier.lower()
+
     # Find user by email or username
     user = db.query(User).filter(
-        (User.email == user_credentials.identifier) | (User.username == user_credentials.identifier)
+        (User.email == identifier) | (User.username == identifier)
     ).first()
     
     if not user:

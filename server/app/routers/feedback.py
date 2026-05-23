@@ -17,8 +17,7 @@ router = APIRouter(tags=["Feedback"])
 
 @router.post("/u/{username}", status_code=status.HTTP_201_CREATED, response_model=dict)
 async def submit_feedback(username: str, message_data: MessageCreate, db: Session = Depends(get_db)):
-    # Find recipient
-    user = db.query(User).filter(User.username == username).first()
+    user = db.query(User).filter(User.username == username.lower()).first()
     
     if not user:
         raise HTTPException(

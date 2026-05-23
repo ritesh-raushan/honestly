@@ -14,13 +14,15 @@ class User(Base):
     password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verification_otp: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
-    otp_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    otp_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     otp_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
     password_reset_otp: Mapped[Optional[str]] = mapped_column(String(6), nullable=True)
-    reset_otp_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    reset_otp_created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     reset_otp_attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    # Set to True after the reset OTP is verified; required by /reset-password and cleared once the password is changed
+    is_reset_otp_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_accepting_messages: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Relationship
@@ -33,7 +35,7 @@ class Message(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     recipient_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationship
     recipient: Mapped["User"] = relationship("User", back_populates="messages")

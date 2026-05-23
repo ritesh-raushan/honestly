@@ -6,11 +6,11 @@ import uuid
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=3, max_length=20, pattern=r'^[a-zA-Z0-9_]+$', description="Username must contain 3-20 alphanumeric characters or underscores")
     email: EmailStr = Field(..., description="Valid email address")
-    password: str = Field(..., min_length=6, description="Password must be at least 6 characters long")
+    password: str = Field(..., min_length=8, description="Password must be at least 8 characters long")
 
 class UserLogin(BaseModel):
     identifier: str = Field(..., description="Email or Username")
-    password: str = Field(..., min_length=6, description="Password")
+    password: str = Field(..., min_length=8, description="Password")
 
 class ResendVerification(BaseModel):
     email: EmailStr = Field(..., description="Email address to resend verification")
@@ -28,7 +28,7 @@ class VerifyResetOTP(BaseModel):
 
 class ResetPassword(BaseModel):
     email: EmailStr = Field(..., description="Email address")
-    new_password: str = Field(..., min_length=6, description="New password must be at least 6 characters long")
+    new_password: str = Field(..., min_length=8, description="New password must be at least 8 characters long")
 
 class UserResponse(BaseModel):
     """Schema for user response."""

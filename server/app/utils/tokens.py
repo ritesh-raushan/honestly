@@ -1,13 +1,14 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-import random
+import secrets
 import string
 from app.config import settings
 
 # OTP Functions
 def generate_otp(length: int = 6) -> str:
-    return ''.join(random.choices(string.digits, k=length))
+    # Use secrets (CSPRNG) instead of random so OTPs cannot be predicted from a seed
+    return ''.join(secrets.choice(string.digits) for _ in range(length))
 
 def is_otp_expired(otp_created_at: datetime) -> bool:
     if not otp_created_at:
