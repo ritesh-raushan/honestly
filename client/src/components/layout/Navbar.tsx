@@ -7,8 +7,8 @@ export default function Navbar() {
   const location = useLocation();
   const { isAuthenticated, user, logout } = useAuthStore();
   
-  // Hide the "Dashboard" link when we're already on the dashboard
   const isOnDashboard = location.pathname === '/dashboard';
+  const isOnSettings = location.pathname === '/settings';
 
   const handleLogout = async () => {
     // The store action already pings /auth/logout and clears local state
@@ -30,6 +30,11 @@ export default function Navbar() {
             {!isOnDashboard && (
               <Link to="/dashboard" className="btn btn-ghost">
                 Dashboard
+              </Link>
+            )}
+            {!isOnSettings && (
+              <Link to="/settings" className="btn btn-ghost">
+                Settings
               </Link>
             )}
             <button onClick={handleLogout} className="btn btn-ghost">
