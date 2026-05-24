@@ -92,6 +92,22 @@ export const resetPasswordSchema = z
 
 export type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
+// Password fields only — OTP is managed as separate digit inputs in ResetPasswordView
+export const resetPasswordFieldsSchema = z
+  .object({
+    new_password: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .max(72, 'Password must be at most 72 characters'),
+    confirm_password: z.string(),
+  })
+  .refine((data) => data.new_password === data.confirm_password, {
+    message: 'Passwords do not match',
+    path: ['confirm_password'],
+  });
+
+export type ResetPasswordFieldsFormData = z.infer<typeof resetPasswordFieldsSchema>;
+
 // Change Password Schema (used in Settings — requires the current password as a confirmation step)
 export const changePasswordSchema = z
   .object({
